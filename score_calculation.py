@@ -22,7 +22,6 @@ import pandas as pd
 
 #We have to use all of the verbs
 def process_csv(fileName) -> list:
-
     with open(fileName, "r", encoding="utf-8") as csvFile:
         verbList = []
         i = 0 
@@ -31,89 +30,80 @@ def process_csv(fileName) -> list:
                 line = line[2:-3].strip()
                 verbs = line.split(",")
                 verbList.append((verbs[0], verbs[1]))
-                
             i += 1
-
     return verbList
 
 
 
 def process_data():
-    #{"sentence_good": "the consultant smiles", "sentence_bad": "the consultant smile", "label": -1}
+    # {"sentence_good": "the consultant smiles", "sentence_bad": "the consultant smile", "label": -1}
 
-    
     def simple_verb_process(fileName, lineList: list, numContext, condition, verbList, sentSet, tsv_file):
-
         writer = csv.writer(tsv_file, delimiter='\t')
 
-        basic_verbs = {'is', 'are', 'interest'}
+        # Define a limited set of verbs to use
+        allowed_verbs = {'is', 'are', 'bring', 'gives', 'help'}  # Add or modify the verbs as needed
         bring = {'bring', 'brings'}
         
+        # Track the number of processed sentences
+        processed_sentences = 0
+        max_sentences_per_file = 100
+
         with open(fileName, 'r', encoding="utf-8") as jsonlFile:
             for line in jsonlFile:
+                if processed_sentences >= max_sentences_per_file:
+                    break  # Stop processing if the limit is reached
+                
                 line = line.strip()
                 if line:
                     data = json.loads(line)
-                    # sentid	comparison	pairid	contextid	lemma	condition	pronoun	sentence	ROI
-                    #we need to get good/bad sentence
                     good_sent = data['sentence_good']
                     bad_sent = data['sentence_bad'] 
                     
-                    #step: try to make a template sentence and then run the rest of the verbs through it 
+                    # Step: Try to make a template sentence and then run the rest of the verbs through it 
                     pairID = (len(lineList)//2) + 1
                     sent_arr = good_sent.split()
+                    
+                    # Determine the verb index and ROI based on the sentence structure
                     if len(sent_arr) >= 4 and sent_arr[-4] in bring:
                         verbInd = -4
                         roi = len(sent_arr) - 4
-                    if len(sent_arr) >= 2 and sent_arr[-2] in basic_verbs:
+                    elif len(sent_arr) >= 2 and sent_arr[-2] in allowed_verbs:
                         verbInd = -2
                         roi = len(sent_arr) - 2
                     else:
                         verbInd = -1
-                        roi = len(sent_arr) -1
+                        roi = len(sent_arr) - 1
                     
                     sent_arr[verbInd] = '_'
                     template_sentence = " ".join(sent_arr)
-                    with open('output.tsv', 'a', newline='') as tsv_file:
-                        if template_sentence not in sentSet:
-                            sentSet.add(template_sentence)     
-                            #deal with adding is/are 
-                            if verbInd != -2:
-                                temp_sent_arr = template_sentence.split()
+                    
+                    if template_sentence not in sentSet:
+                        sentSet.add(template_sentence)     
+                        
+                        # Ensure that only allowed verbs are used in output
+                        for verb in allowed_verbs:
+                            # Add good sentence
+                            good_sent = template_sentence.replace('_', verb)
+                            writer.writerow([len(lineList)+1, "expected", pairID, numContext, verb, condition, "NA", good_sent, roi])
+                            
+                            # Add bad sentence
+                            bad_sent = template_sentence.replace('_', verb)
+                            writer.writerow([len(lineList)+1, "unexpected", pairID, numContext, verb, condition, "NA", bad_sent, roi])
+                            pairID += 1
 
-                                for gV, bV in verbList:
-                                    #add good sentence
-                                    temp_sent_arr[verbInd] = gV
-                                    good_sent = " ".join(temp_sent_arr)
-                                    writer.writerow([len(lineList)+1, "expected", pairID, numContext, gV, condition, "NA", good_sent, roi])
-                                    #lineList.append([len(lineList)+1, "expected", pairID, numContext, gV, condition, "NA", good_sent, roi])
-
-                                    temp_sent_arr[verbInd] = bV
-                                    bad_sent = " ".join(temp_sent_arr)
-                                    #add bad sentence
-                                    #lineList.append([len(lineList)+1, "unexpected", pairID, numContext, bV, condition, "NA", bad_sent, roi])
-                                    writer.writerow([len(lineList)+1, "expected", pairID, numContext, bV, condition, "NA", bad_sent, roi])
-
-                                    pairID += 1
-                            else:
-                                #lineList.append([len(lineList)+1, "expected", pairID, numContext, "BE", condition, "NA", good_sent, roi])
-                                writer.writerow([len(lineList)+1, "expected", pairID, numContext, "BE", condition, "NA", good_sent, roi])
-                                    #add bad sentence
-                                #lineList.append([len(lineList)+1, "unexpected", pairID, numContext, "BE", condition, "NA", bad_sent, roi])
-                                writer.writerow([len(lineList)+1, "unexpected", pairID, numContext, "BE", condition, "NA", bad_sent, roi])
+                    processed_sentences += 1  # Increment the count of processed sentences
         return sentSet
 
 
-    #simple_verb_process('simple_agrmt_all.jsonl', paper_df, 1, "simple")
     csv_file = "combined_verb_list.csv"
     verbList = process_csv(csv_file)
     lineList = []
     numContext = 1
     sentSet = set()
 
-    #['sentID', 'comparison', 'pairid', 'contextid', 'lemma', 'condition', 'pronoun', 'sentence', 'ROI']    
+    # ['sentID', 'comparison', 'pairid', 'contextid', 'lemma', 'condition', 'pronoun', 'sentence', 'ROI']    
     with open('midterm_output.tsv', 'a', newline='') as tsv_file:
-        
         writer = csv.writer(tsv_file, delimiter='\t')
         writer.writerow(['sentID', 'comparison', 'pairid', 'contextid', 'lemma', 'condition', 'pronoun', 'sentence', 'ROI'])
         for folder_name in os.listdir('data_categories'):
@@ -126,7 +116,6 @@ def process_data():
                     simple_verb_process(file_path, lineList, numContext, condition, verbList, sentSet, tsv_file)
 
             numContext += 1
-
    
 
 
